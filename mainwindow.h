@@ -7,6 +7,7 @@
 #include <QCamera>
 #include <QVideoWidget>
 #include <QMediaCaptureSession>
+#include <QtMultimedia/QVideoSink>
 #include "hyper_lpr_sdk.h"
 
 QT_BEGIN_NAMESPACE
@@ -25,17 +26,22 @@ public:
 
 private slots:
     void on_btCameraToggle_clicked();
+    void processVideoFrame(const QVideoFrame &frame);
 
 private:
     Ui::MainWindow *ui;
     QList<QCameraDevice> cameralist;
     QCamera *camera;
     QMediaCaptureSession *captureSession;
+    QVideoSink *videoFrameFlow;
 
+    HLPR_ImageData *imageData;
     P_HLPR_DataBuffer buffer;
     HLPR_PlateResultList results;
     P_HLPR_Context ctx;
     HREESULT result;
+
+    int frameIdx;
 
 };
 #endif // MAINWINDOW_H
