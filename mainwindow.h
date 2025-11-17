@@ -7,6 +7,7 @@
 #include <QCamera>
 #include <QVideoWidget>
 #include <QMediaCaptureSession>
+#include "hyper_lpr_sdk.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -30,5 +31,11 @@ private:
     QList<QCameraDevice> cameralist;
     QCamera *camera;
     QMediaCaptureSession *captureSession;
+
+    P_HLPR_DataBuffer buffer;
+    HLPR_PlateResultList results;
+    P_HLPR_Context ctx;
+    HREESULT result;
+
 };
 #endif // MAINWINDOW_H
