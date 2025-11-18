@@ -12,9 +12,6 @@ MainWindow::MainWindow(QWidget *parent)
     captureSession = new QMediaCaptureSession(this);
     camera=new QCamera(cameralist[0]);
     videoFrameFlow = new QVideoSink(this);
-    QVideoWidget *wgt = new QVideoWidget(ui->widget) ;
-    wgt->resize(ui->widget->width(),ui->widget->height());
-    wgt->show();
     captureSession->setCamera(camera);           // connect camera and widget
     captureSession->setVideoSink(videoFrameFlow);
 
@@ -23,14 +20,14 @@ MainWindow::MainWindow(QWidget *parent)
     // 核心配置
     // =======================================================
     config.models_path = (char*)"r2_mobile"; // 【設定模型路徑】
-    config.threads = 1;                    // 【單執行緒】
+    config.threads = 12;                    // 【單執行緒】
     config.use_half = true;                // 【開啟半精度】
 
     // =======================================================
     // 精度與敏感度配置
     // =======================================================
-    config.max_num = 5;                        // 最多檢測 5 個車牌
-    config.det_level = DETECT_LEVEL_HIGH;       // 推薦：高開銷/高精度檢測
+    config.max_num = 1;                        // 最多檢測 5 個車牌
+    config.det_level = DETECT_LEVEL_LOW;       // 推薦：高開銷/高精度檢測
 
     // 閾值 (可以根據您的測試情況微調)
     config.box_conf_threshold = 0.5f;          // 檢測框閾值
@@ -48,6 +45,7 @@ MainWindow::MainWindow(QWidget *parent)
     buffer = HLPR_CreateDataBuffer(imageData);
     ctx = HLPR_CreateContext(&config);
     frameIdx=0;
+    plateVoteFlag=0;
     connect(videoFrameFlow, &QVideoSink::videoFrameChanged, this, &MainWindow::processVideoFrame);
 }
 
@@ -68,10 +66,14 @@ void MainWindow::on_btCameraToggle_clicked()
 
 void  MainWindow::processVideoFrame(const QVideoFrame &frame)
 {
-    frameIdx++;//10 frame 1 runs
-    if(frameIdx<10||!frame.isValid())
+    QImage img=frame.toImage().convertToFormat(QImage::Format_RGB888);//frame to image
+    QPixmap pixmap = QPixmap::fromImage(img);
+    QPixmap scaledPixmap = pixmap.scaled(ui->lbCamLive->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    ui->lbCamLive->setPixmap(scaledPixmap);
+    frameIdx++;//30 frame 1 runs, 8 frame when voting
+    if(frameIdx<(plateVoteFlag>0?8:30)||!frame.isValid())
         return;
-    QImage img=frame.toImage().convertToFormat(QImage::Format_RGB888);
+
     frameIdx=0;
 
     if(img.width()!=imageData->width || img.height()!=imageData->height)//determine if camera resulotion fit size of buffer
@@ -95,6 +97,9 @@ void  MainWindow::processVideoFrame(const QVideoFrame &frame)
             qDebug() << "Plate No.: " << results.plates[i].code
                      << ", Type of Plate: " << results.plates[i].type
                      << ", Confident: " << results.plates[i].text_confidence;
+
+            livePlate.first=results.plates[i].code;
+            livePlate.second=results.plates[i].text_confidence;
         }
     }
 
@@ -103,5 +108,49 @@ void  MainWindow::processVideoFrame(const QVideoFrame &frame)
         // 根據 result 的值（例如 MNN_ERROR, PARAMS_ERROR 等）來診斷問題。
     } else if (results.plate_size == 0) {
         qDebug() << "Stream update success, but no plates detected.";
+        livePlate.first="";
+        livePlate.second=0.8;
+    }
+
+    if(livePlate.first!=curPlate && plateVoteFlag<=0)//detect new plate, start vote
+    {
+        plateVoteFlag=6;//5 vote run, 8 frame per run
+        plateVote.clear();
+        if(livePlate.first!="")
+            ui->lbVehiPlateNumd->setText("停定！检测中！");
+        qDebug()<<"Vote Start!!";
+    }
+    if(plateVoteFlag>0)//plate vote
+    {
+        plateVoteFlag--;
+        int idx;
+        for(idx=0;idx<plateVote.size();idx++)
+            if(plateVote.at(idx).first==livePlate.first)
+            {
+                plateVote[idx].second+=livePlate.second;//add conf to sum of plate
+                qDebug()<<"Plate No.: "<<plateVote[idx].first<<", SumConf: "<<plateVote[idx].second;
+                if(plateVote[idx].second>2.5)//reach major (>2.5 of 5), win now
+                    plateVoteFlag=1;
+                break;
+            }
+        if(idx>=plateVote.size())//livePlate not in queue, append it
+        {
+            plateVote.append(livePlate);
+            qDebug()<<"Plate No.: "<<plateVote.back().first<<", NewConf: "<<plateVote.back().second;
+        }
+    }
+    if(plateVoteFlag==1)//plate vote end
+    {
+        QPair<QString,float> maxConfPlate={"",0};
+        for(int idx=0;idx<plateVote.size();idx++)
+            if(plateVote[idx].second>maxConfPlate.second)//take most conf plate
+                maxConfPlate=plateVote[idx];
+        qDebug()<<"Vote End!! Wins: "<<maxConfPlate.first<<" SumConf: "<<maxConfPlate.second;
+        curPlate=maxConfPlate.first;
+        if(curPlate=="")//display
+            ui->lbVehiPlateNumd->setText("欢迎莅临\nXYZ停车场");
+        else
+            ui->lbVehiPlateNumd->setText(curPlate);
+        plateVoteFlag=0;
     }
 }

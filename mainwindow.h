@@ -8,6 +8,7 @@
 #include <QVideoWidget>
 #include <QMediaCaptureSession>
 #include <QtMultimedia/QVideoSink>
+#include <QQueue>
 #include "hyper_lpr_sdk.h"
 
 QT_BEGIN_NAMESPACE
@@ -42,6 +43,11 @@ private:
     HREESULT result;
 
     int frameIdx;
+    QString curPlate;//curPlate is determine by multi live plate in short time, according to highest plateVote
+    QPair<QString,float> livePlate;
+    QQueue<QPair<QString,float>> plateVote;
+    int plateVoteFlag;
+
 
 };
 #endif // MAINWINDOW_H
