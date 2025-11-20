@@ -6,6 +6,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    dbManager = new databaseManager();
     cameralist = QMediaDevices::videoInputs();
     for(int i=0; i<cameralist.size();i++)
         qDebug()<<"发现相机: "<<cameralist[i].description()<<"; "<<cameralist[i].id();
@@ -150,7 +151,19 @@ void  MainWindow::processVideoFrame(const QVideoFrame &frame)
         if(curPlate=="")//display
             ui->lbVehiPlateNumd->setText("欢迎莅临\nXYZ停车场");
         else
+        {
+            databaseManager::eventRtnKit rtnKit;
+            rtnKit=dbManager->vehiScanned(curPlate);
             ui->lbVehiPlateNumd->setText(curPlate);
+            if(rtnKit.dir==databaseManager::eventRtnKit::carIn)
+                ui->lbVehiDir->setText("欢迎进场");
+            else if(rtnKit.dir==databaseManager::eventRtnKit::carOut)
+            {
+                ui->lbVehiDir->setText("离场\n请缴费: "+QString::number(rtnKit.payPrice)+"\n-================-\n进场时间: "+rtnKit.carInT.toString()+"\n离场时间: "+rtnKit.carOutT.toString());
+            }
+            else if(rtnKit.dir==databaseManager::eventRtnKit::fail)
+                ui->lbVehiDir->setText("出现问题！请考虑祈祷");
+        }
         plateVoteFlag=0;
     }
 }

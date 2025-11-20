@@ -9,6 +9,7 @@
 #include <QMediaCaptureSession>
 #include <QtMultimedia/QVideoSink>
 #include <QQueue>
+#include "databasemanager.h"
 #include "hyper_lpr_sdk.h"
 
 QT_BEGIN_NAMESPACE
@@ -35,19 +36,20 @@ private:
     QCamera *camera;
     QMediaCaptureSession *captureSession;
     QVideoSink *videoFrameFlow;
+    databaseManager *dbManager;
 
+    //HyperLPR
     HLPR_ImageData *imageData;
     P_HLPR_DataBuffer buffer;
     HLPR_PlateResultList results;
     P_HLPR_Context ctx;
     HREESULT result;
 
+    //HyperLPR result vote
     int frameIdx;
     QString curPlate;//curPlate is determine by multi live plate in short time, according to highest plateVote
     QPair<QString,float> livePlate;
     QQueue<QPair<QString,float>> plateVote;
     int plateVoteFlag;
-
-
 };
 #endif // MAINWINDOW_H

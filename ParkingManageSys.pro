@@ -1,4 +1,4 @@
-QT       += core gui multimedia multimediawidgets
+QT       += core gui multimedia multimediawidgets sql
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -17,10 +17,12 @@ LIBS += C:\opencv_world4120d.lib
 LIBS += C:\pthread.lib
 
 SOURCES += \
+    databasemanager.cpp \
     main.cpp \
     mainwindow.cpp
 
 HEADERS += \
+    databasemanager.h \
     mainwindow.h
 
 FORMS += \
