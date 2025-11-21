@@ -1,5 +1,6 @@
 #include "databasemanager.h"
 #include <QSqlError>
+#include <QRandomGenerator>//auto seeding1
 
 databaseManager::databaseManager()
 {
@@ -7,21 +8,29 @@ databaseManager::databaseManager()
     db.setDatabaseName("1.db");
     db.open();
     QSqlQuery query(db);
-    bool queryValid = query.exec("CREATE TABLE IF NOT EXISTS carList (plateNo TEXT NOT NULL, carInTime INT NOT NULL, carOutTime INT, PRIMARY KEY (plateNo, carInTime))");//unix time
+    bool queryValid = query.exec("CREATE TABLE IF NOT EXISTS carPresent (plateNo TEXT NOT NULL, carInTime INT NOT NULL, PRIMARY KEY (plateNo))");//unix time
     if(queryValid==false)
-        qDebug()<<"SQLErr: Create table fail when needed.";
+        qDebug()<<"SQLErr: Create carPresent fail when needed.";
+    queryValid = query.exec("CREATE TABLE IF NOT EXISTS carLog (paymentID INT UNIQUE NOT NULL, plateNo TEXT NOT NULL, carInTime INT NOT NULL, carOutTime INT, PRIMARY KEY (paymentID))");
+    if(queryValid==false)
+        qDebug()<<"SQLErr: Create carLog fail when needed.";
+    queryValid = query.exec("CREATE TABLE IF NOT EXISTS payment (paymentID INT UNIQUE NOT NULL, amount DECIMAL(10,2) NOT NULL, paidFlag BOOL NOT NULL, PRIMARY KEY (paymentID))");//amount 10 整数 2小数
+    if(queryValid==false)
+        qDebug()<<"SQLErr: Create payment fail when needed.";
+    openSQLResult = new QSqlQueryModel();
 }
 databaseManager::~databaseManager()
 {
     if (db.isOpen())
         db.close();
+    free(openSQLResult);
 }
 
 databaseManager::eventRtnKit databaseManager::vehiScanned(QString plateNo)
 {
     eventRtnKit rtnKit;
     QSqlQuery query(db);
-    query.prepare("SELECT COUNT(*) FROM carList WHERE plateNo=:plateNo AND carOutTime IS NULL");
+    query.prepare("SELECT COUNT(*) FROM carPresent WHERE plateNo=:plateNo");
     query.bindValue(":plateNo", plateNo);
     query.finish();
     if(!query.exec())
@@ -38,7 +47,7 @@ databaseManager::eventRtnKit databaseManager::vehiScanned(QString plateNo)
     }
     else//car getting out
     {
-        qDebug()<<"Size"<<query.value(0).toInt();
+        qDebug()<<"Size: "<<query.value(0).toInt();
         rtnKit = vehiOutBound(plateNo);
     }
     return rtnKit;
@@ -47,9 +56,9 @@ databaseManager::eventRtnKit databaseManager::vehiScanned(QString plateNo)
 bool databaseManager::vehiInBound(QString plateNo)
 {
     QSqlQuery query(db);
-    query.prepare("INSERT INTO carList (plateNo, carInTime) VALUES(:plateNo, :time)");
+    query.prepare("INSERT INTO carPresent (plateNo, carInTime) VALUES(:plateNo, :curTime)");//push into db
     query.bindValue(":plateNo",plateNo);
-    query.bindValue(":time",QDateTime::currentSecsSinceEpoch());
+    query.bindValue(":curTime",QDateTime::currentSecsSinceEpoch());
     query.exec();
     if(query.isValid()==false)
     {
@@ -63,7 +72,7 @@ databaseManager::eventRtnKit databaseManager::vehiOutBound(QString plateNo)
 {
     eventRtnKit rtnKit;
     QSqlQuery query(db);
-    query.prepare("SELECT COUNT(*) FROM carList WHERE plateNo=:plateNo AND carOutTime IS NULL");
+    query.prepare("SELECT COUNT(*) FROM carPresent WHERE plateNo=:plateNo");//car record with enrty log and no exit log
     query.bindValue(":plateNo",plateNo);
     query.finish();query.exec();query.next();
     if(query.isValid()==false)
@@ -72,17 +81,38 @@ databaseManager::eventRtnKit databaseManager::vehiOutBound(QString plateNo)
         rtnKit.dir=eventRtnKit::fail;
         return rtnKit;
     }
-    if(query.value(0).toInt()==1)
+    if(query.value(0).toInt()==1)//car is leaving
     {
-        query.prepare("UPDATE carList SET carOutTime=:time WHERE plateNo=:plateNo AND carOutTime IS NULL RETURNING *");
-        query.bindValue(":time",QDateTime::currentSecsSinceEpoch());
+        //get exiting car data
+        query.prepare("SELECT * FROM carPresent WHERE plateNo=:plateNo");
         query.bindValue(":plateNo",plateNo);
         query.finish();query.exec();query.next();
+        if(query.isValid()==false){qDebug()<<"SQLErr: vehiOutBound browse carPresent failed.";}
         int inTime = query.value("carInTime").toInt();
-        int outTime = query.value("carOutTime").toInt();
-        qDebug()<<"outTime"<<outTime<<"Intime:"<<inTime<<"outTime-inTime:"<<outTime-inTime;
-        rtnKit.payPrice = ceil((float)(outTime-inTime)/unitInSec)*pricePerUnit;
-        rtnKit.carInT = QDateTime::fromSecsSinceEpoch(inTime);
+        int outTime = QDateTime::currentSecsSinceEpoch();
+        rtnKit.payPrice = ceil((float)(outTime-inTime)/unitInSec)*pricePerUnit;//calculate price
+        query.bindValue(":curTime",QDateTime::currentSecsSinceEpoch());
+        //add a payment
+        int paymentID=10000+ QRandomGenerator::global()->bounded(40000);//random paymentID 10000~50000
+        query.prepare("INSERT INTO payment VALUES (:paymentID, :payPrice, False)");
+        query.bindValue(":paymentID",paymentID);
+        query.bindValue(":payPrice",rtnKit.payPrice);
+        query.exec();
+        if(query.isValid()==false){qDebug()<<"SQLErr: vehiOutBound append payment failed.";}
+        //add a carLog
+        query.prepare("INSERT INTO carLog VALUES (:paymentID, :plateNo, :carinTime, :carOutTime)");
+        query.bindValue(":paymentID",paymentID);
+        query.bindValue(":plateNo",plateNo);
+        query.bindValue(":carinTime",inTime);
+        query.bindValue(":carOutTime",outTime);
+        query.exec();
+        if(query.isValid()==false){qDebug()<<"SQLErr: vehiOutBound append pay to carLog failed.";}
+        //delete from carPresent
+        query.prepare("DELETE FROM carPresent WHERE plateNo=:plateNo");
+        query.bindValue(":plateNo",plateNo);
+        query.exec();
+        if(query.isValid()==false){qDebug()<<"SQLErr: vehiOutBound romove from carPresent failed.";}
+        rtnKit.carInT = QDateTime::fromSecsSinceEpoch(inTime);//unix time to qtime
         rtnKit.carOutT = QDateTime::fromSecsSinceEpoch(outTime);
         rtnKit.dir = eventRtnKit::carOut;
     }else
@@ -92,6 +122,18 @@ databaseManager::eventRtnKit databaseManager::vehiOutBound(QString plateNo)
     }
     return rtnKit;
 };
+
+QSqlQueryModel* databaseManager::execSQLSelect(QString sqlCmd)
+{
+    QSqlQuery query(db);
+    query.prepare(sqlCmd);//load to query
+    query.bindValue(":curTime",QDateTime::currentSecsSinceEpoch());//provide curtime if needed
+    query.exec();
+    (*openSQLResult).setQuery(query);//auto execute sql command, now result store inside.
+    if(openSQLResult->lastError().isValid()==false)
+        qDebug()<<"SQLErr: execSQLSelect fail executing outsider command:  "<<openSQLResult->lastError().databaseText();
+    return openSQLResult;
+}
 
 
 

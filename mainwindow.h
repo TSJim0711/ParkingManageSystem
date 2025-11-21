@@ -9,8 +9,9 @@
 #include <QMediaCaptureSession>
 #include <QtMultimedia/QVideoSink>
 #include <QQueue>
-#include "databasemanager.h"
 #include "hyper_lpr_sdk.h"
+#include "databasemanager.h"
+#include "bussinessdataviewer.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -30,6 +31,12 @@ private slots:
     void on_btCameraToggle_clicked();
     void processVideoFrame(const QVideoFrame &frame);
 
+    void on_pushButton_clicked();
+
+    void on_pushButton_2_clicked();
+
+    void on_btDataView_clicked();
+
 private:
     Ui::MainWindow *ui;
     QList<QCameraDevice> cameralist;
@@ -37,6 +44,7 @@ private:
     QMediaCaptureSession *captureSession;
     QVideoSink *videoFrameFlow;
     databaseManager *dbManager;
+    bussinessDataViewer *dataViewer;
 
     //HyperLPR
     HLPR_ImageData *imageData;

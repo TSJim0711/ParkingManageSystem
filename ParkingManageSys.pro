@@ -17,15 +17,18 @@ LIBS += C:\opencv_world4120d.lib
 LIBS += C:\pthread.lib
 
 SOURCES += \
+    bussinessdataviewer.cpp \
     databasemanager.cpp \
     main.cpp \
     mainwindow.cpp
 
 HEADERS += \
+    bussinessdataviewer.h \
     databasemanager.h \
     mainwindow.h
 
 FORMS += \
+    bussinessdataviewer.ui \
     mainwindow.ui
 
 # Default rules for deployment.

@@ -15,6 +15,10 @@ public:
     databaseManager();
     ~databaseManager();
 
+    int pricePerUnit = 0.1;//$0.1 every 1 sec. 1hr pay $360, good price
+    int unitInSec = 1;
+    QSqlQueryModel *openSQLResult;
+
     struct eventRtnKit
     {
         enum{fail, carIn, carOut} dir;
@@ -23,18 +27,12 @@ public:
         int payPrice;
     };
     eventRtnKit vehiScanned(QString plateNo);
-
-    int pricePerUnit = 8;//$8 every 5 sec
-    int unitInSec = 5;
+    QSqlQueryModel *execSQLSelect(QString sqlCmd);
 
 private:
     QSqlDatabase db;
-    QSqlQueryModel *dbModel;
-
     bool vehiInBound(QString plateNo);
     eventRtnKit vehiOutBound(QString plateNo);
-
-
 };
 
 #endif // DATABASEMANAGER_H

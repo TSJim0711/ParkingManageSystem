@@ -7,6 +7,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
     dbManager = new databaseManager();
+    dataViewer = new bussinessDataViewer(this, dbManager);
     cameralist = QMediaDevices::videoInputs();
     for(int i=0; i<cameralist.size();i++)
         qDebug()<<"发现相机: "<<cameralist[i].description()<<"; "<<cameralist[i].id();
@@ -53,6 +54,8 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow()
 {
     HLPR_ReleaseDataBuffer(buffer); //release buffer addr
+    delete dbManager;
+    delete dataViewer;
     delete ui;
 }
 
@@ -108,7 +111,7 @@ void  MainWindow::processVideoFrame(const QVideoFrame &frame)
         qDebug() << "ERROR: HLPR_ContextUpdateStream failed. Result code:" << result;
         // 根據 result 的值（例如 MNN_ERROR, PARAMS_ERROR 等）來診斷問題。
     } else if (results.plate_size == 0) {
-        qDebug() << "Stream update success, but no plates detected.";
+        //qDebug() << "Stream update success, but no plates detected.";
         livePlate.first="";
         livePlate.second=0.8;
     }
@@ -129,7 +132,7 @@ void  MainWindow::processVideoFrame(const QVideoFrame &frame)
             if(plateVote.at(idx).first==livePlate.first)
             {
                 plateVote[idx].second+=livePlate.second;//add conf to sum of plate
-                qDebug()<<"Plate No.: "<<plateVote[idx].first<<", SumConf: "<<plateVote[idx].second;
+                //qDebug()<<"Plate No.: "<<plateVote[idx].first<<", SumConf: "<<plateVote[idx].second;
                 if(plateVote[idx].second>2.5)//reach major (>2.5 of 5), win now
                     plateVoteFlag=1;
                 break;
@@ -137,7 +140,7 @@ void  MainWindow::processVideoFrame(const QVideoFrame &frame)
         if(idx>=plateVote.size())//livePlate not in queue, append it
         {
             plateVote.append(livePlate);
-            qDebug()<<"Plate No.: "<<plateVote.back().first<<", NewConf: "<<plateVote.back().second;
+            //qDebug()<<"Plate No.: "<<plateVote.back().first<<", NewConf: "<<plateVote.back().second;
         }
     }
     if(plateVoteFlag==1)//plate vote end
@@ -167,3 +170,9 @@ void  MainWindow::processVideoFrame(const QVideoFrame &frame)
         plateVoteFlag=0;
     }
 }
+
+void MainWindow::on_btDataView_clicked()
+{
+    dataViewer->exec();
+}
+
