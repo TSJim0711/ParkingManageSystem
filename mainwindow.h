@@ -9,9 +9,14 @@
 #include <QMediaCaptureSession>
 #include <QtMultimedia/QVideoSink>
 #include <QQueue>
+#include <opencv2/objdetect.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include "hyper_lpr_sdk.h"
 #include "databasemanager.h"
 #include "bussinessdataviewer.h"
+#include "paymentservice.h"
+
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -26,15 +31,11 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+    void showText(QString txt);
 
 private slots:
     void on_btCameraToggle_clicked();
     void processVideoFrame(const QVideoFrame &frame);
-
-    void on_pushButton_clicked();
-
-    void on_pushButton_2_clicked();
-
     void on_btDataView_clicked();
 
 private:
@@ -45,6 +46,7 @@ private:
     QVideoSink *videoFrameFlow;
     databaseManager *dbManager;
     bussinessDataViewer *dataViewer;
+    paymentService *payServc;
 
     //HyperLPR
     HLPR_ImageData *imageData;
@@ -54,10 +56,16 @@ private:
     HREESULT result;
 
     //HyperLPR result vote
-    int frameIdx;
+    int frameIdxPlateRec;
     QString curPlate;//curPlate is determine by multi live plate in short time, according to highest plateVote
     QPair<QString,float> livePlate;
     QQueue<QPair<QString,float>> plateVote;
     int plateVoteFlag;
+    databaseManager::eventRtnKit rtnKit;
+
+    //QR Code Scan
+    int frameIdxQRCode;
+    bool QRScanFlag;
+    cv::QRCodeDetector qrDecoder;
 };
 #endif // MAINWINDOW_H

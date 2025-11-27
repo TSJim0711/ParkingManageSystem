@@ -6,8 +6,11 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+
     dbManager = new databaseManager();
     dataViewer = new bussinessDataViewer(this, dbManager);
+    payServc = new paymentService(dbManager);
+
     cameralist = QMediaDevices::videoInputs();
     for(int i=0; i<cameralist.size();i++)
         qDebug()<<"发现相机: "<<cameralist[i].description()<<"; "<<cameralist[i].id();
@@ -16,6 +19,7 @@ MainWindow::MainWindow(QWidget *parent)
     videoFrameFlow = new QVideoSink(this);
     captureSession->setCamera(camera);           // connect camera and widget
     captureSession->setVideoSink(videoFrameFlow);
+    ui->lbParkingSpaceLeft->setText(QString::number(dbManager->carParkSpace-dbManager->getParkingCarCount()));
 
     HLPR_ContextConfiguration config = {0};
     // =======================================================
@@ -46,9 +50,12 @@ MainWindow::MainWindow(QWidget *parent)
 
     buffer = HLPR_CreateDataBuffer(imageData);
     ctx = HLPR_CreateContext(&config);
-    frameIdx=0;
+    frameIdxPlateRec=0;
+    frameIdxQRCode=0;
     plateVoteFlag=0;
+    QRScanFlag=false;
     connect(videoFrameFlow, &QVideoSink::videoFrameChanged, this, &MainWindow::processVideoFrame);
+    connect(payServc, &paymentService::paymentUpdate, this, &MainWindow::showText);
 }
 
 MainWindow::~MainWindow()
@@ -74,101 +81,122 @@ void  MainWindow::processVideoFrame(const QVideoFrame &frame)
     QPixmap pixmap = QPixmap::fromImage(img);
     QPixmap scaledPixmap = pixmap.scaled(ui->lbCamLive->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
     ui->lbCamLive->setPixmap(scaledPixmap);
-    frameIdx++;//30 frame 1 runs, 8 frame when voting
-    if(frameIdx<(plateVoteFlag>0?8:30)||!frame.isValid())
-        return;
-
-    frameIdx=0;
-
-    if(img.width()!=imageData->width || img.height()!=imageData->height)//determine if camera resulotion fit size of buffer
+    frameIdxPlateRec++;
+    frameIdxQRCode++;
+    if(frameIdxPlateRec>=(plateVoteFlag>0?8:30)||!frame.isValid())//30 frame 1 runs, 8 frame when voting
     {
-        imageData->data=img.bits();
-        HLPR_ReleaseDataBuffer(buffer);//release out-dated buffer
-        imageData->width=img.width();//update to current res
-        imageData->height=img.height();
-        buffer = HLPR_CreateDataBuffer(imageData);//assign correct buffer size
-    }else
-    {
-        HLPR_DataBufferSetData(buffer,img.constBits(),img.width(),img.height());//update buf, point to newest img.bits()
-    }
-
-    results = {0};//clear last result
-    result = HLPR_ContextUpdateStream(ctx, buffer, &results);
-
-    if (result == Ok && results.plate_size > 0) {
-        // 處理識別結果
-        for (unsigned long i = 0; i < results.plate_size; ++i) {
-            qDebug() << "Plate No.: " << results.plates[i].code
-                     << ", Type of Plate: " << results.plates[i].type
-                     << ", Confident: " << results.plates[i].text_confidence;
-
-            livePlate.first=results.plates[i].code;
-            livePlate.second=results.plates[i].text_confidence;
-        }
-    }
-
-    if (result != Ok) {
-        qDebug() << "ERROR: HLPR_ContextUpdateStream failed. Result code:" << result;
-        // 根據 result 的值（例如 MNN_ERROR, PARAMS_ERROR 等）來診斷問題。
-    } else if (results.plate_size == 0) {
-        //qDebug() << "Stream update success, but no plates detected.";
-        livePlate.first="";
-        livePlate.second=0.8;
-    }
-
-    if(livePlate.first!=curPlate && plateVoteFlag<=0)//detect new plate, start vote
-    {
-        plateVoteFlag=6;//5 vote run, 8 frame per run
-        plateVote.clear();
-        if(livePlate.first!="")
-            ui->lbVehiPlateNumd->setText("停定！检测中！");
-        qDebug()<<"Vote Start!!";
-    }
-    if(plateVoteFlag>0)//plate vote
-    {
-        plateVoteFlag--;
-        int idx;
-        for(idx=0;idx<plateVote.size();idx++)
-            if(plateVote.at(idx).first==livePlate.first)
-            {
-                plateVote[idx].second+=livePlate.second;//add conf to sum of plate
-                //qDebug()<<"Plate No.: "<<plateVote[idx].first<<", SumConf: "<<plateVote[idx].second;
-                if(plateVote[idx].second>2.5)//reach major (>2.5 of 5), win now
-                    plateVoteFlag=1;
-                break;
-            }
-        if(idx>=plateVote.size())//livePlate not in queue, append it
+        frameIdxPlateRec=0;//reset count
+        if(img.width()!=imageData->width || img.height()!=imageData->height)//determine if camera resulotion fit size of buffer
         {
-            plateVote.append(livePlate);
-            //qDebug()<<"Plate No.: "<<plateVote.back().first<<", NewConf: "<<plateVote.back().second;
-        }
-    }
-    if(plateVoteFlag==1)//plate vote end
-    {
-        QPair<QString,float> maxConfPlate={"",0};
-        for(int idx=0;idx<plateVote.size();idx++)
-            if(plateVote[idx].second>maxConfPlate.second)//take most conf plate
-                maxConfPlate=plateVote[idx];
-        qDebug()<<"Vote End!! Wins: "<<maxConfPlate.first<<" SumConf: "<<maxConfPlate.second;
-        curPlate=maxConfPlate.first;
-        if(curPlate=="")//display
-            ui->lbVehiPlateNumd->setText("欢迎莅临\nXYZ停车场");
-        else
+            imageData->data=img.bits();
+            HLPR_ReleaseDataBuffer(buffer);//release out-dated buffer
+            imageData->width=img.width();//update to current res
+            imageData->height=img.height();
+            buffer = HLPR_CreateDataBuffer(imageData);//assign correct buffer size
+        }else
         {
-            databaseManager::eventRtnKit rtnKit;
-            rtnKit=dbManager->vehiScanned(curPlate);
-            ui->lbVehiPlateNumd->setText(curPlate);
-            if(rtnKit.dir==databaseManager::eventRtnKit::carIn)
-                ui->lbVehiDir->setText("欢迎进场");
-            else if(rtnKit.dir==databaseManager::eventRtnKit::carOut)
-            {
-                ui->lbVehiDir->setText("离场\n请缴费: "+QString::number(rtnKit.payPrice)+"\n-================-\n进场时间: "+rtnKit.carInT.toString()+"\n离场时间: "+rtnKit.carOutT.toString());
-            }
-            else if(rtnKit.dir==databaseManager::eventRtnKit::fail)
-                ui->lbVehiDir->setText("出现问题！请考虑祈祷");
+            HLPR_DataBufferSetData(buffer,img.constBits(),img.width(),img.height());//update buf, point to newest img.bits()
         }
-        plateVoteFlag=0;
+
+        results = {0};//clear last result
+        result = HLPR_ContextUpdateStream(ctx, buffer, &results);
+
+        if (result == Ok && results.plate_size > 0) {
+            // 處理識別結果
+            for (unsigned long i = 0; i < results.plate_size; ++i) {
+                qDebug() << "Plate No.: " << results.plates[i].code
+                         << ", Type of Plate: " << results.plates[i].type
+                         << ", Confident: " << results.plates[i].text_confidence;
+
+                livePlate.first=results.plates[i].code;
+                livePlate.second=results.plates[i].text_confidence;
+            }
+        }
+
+        if (result != Ok) {
+            qDebug() << "ERROR: HLPR_ContextUpdateStream failed. Result code:" << result;
+            // 根據 result 的值（例如 MNN_ERROR, PARAMS_ERROR 等）來診斷問題。
+        } else if (results.plate_size == 0) {
+            //qDebug() << "Stream update success, but no plates detected.";
+            livePlate.first="";
+            livePlate.second=0.8;
+        }
+
+        if(livePlate.first!=curPlate && plateVoteFlag<=0)//detect new plate, start vote
+        {
+            plateVoteFlag=6;//5 vote run, 8 frame per run
+            plateVote.clear();
+            if(livePlate.first!="")
+                ui->lbVehiPlateNumd->setText("停定！检测中！");
+            qDebug()<<"Vote Start!!";
+        }
+        if(plateVoteFlag>0)//plate vote
+        {
+            plateVoteFlag--;
+            int idx;
+            for(idx=0;idx<plateVote.size();idx++)
+                if(plateVote.at(idx).first==livePlate.first)
+                {
+                    plateVote[idx].second+=livePlate.second;//add conf to sum of plate
+                    //qDebug()<<"Plate No.: "<<plateVote[idx].first<<", SumConf: "<<plateVote[idx].second;
+                    if(plateVote[idx].second>2.5)//reach major (>2.5 of 5), win now
+                        plateVoteFlag=1;
+                    break;
+                }
+            if(idx>=plateVote.size())//livePlate not in queue, append it
+            {
+                plateVote.append(livePlate);
+                //qDebug()<<"Plate No.: "<<plateVote.back().first<<", NewConf: "<<plateVote.back().second;
+            }
+        }
+        if(plateVoteFlag==1)//plate vote end
+        {
+            QPair<QString,float> maxConfPlate={"",0};
+            for(int idx=0;idx<plateVote.size();idx++)
+                if(plateVote[idx].second>maxConfPlate.second)//take most conf plate
+                    maxConfPlate=plateVote[idx];
+            qDebug()<<"Vote End!! Wins: "<<maxConfPlate.first<<" SumConf: "<<maxConfPlate.second;
+            curPlate=maxConfPlate.first;
+            if(curPlate=="")//display
+                ui->lbVehiPlateNumd->setText("欢迎莅临\nXYZ停车场");
+            else
+            {
+                rtnKit=dbManager->vehiScanned(curPlate);
+                ui->lbVehiPlateNumd->setText(curPlate);
+                if(rtnKit.dir==databaseManager::eventRtnKit::carIn)
+                    ui->lbVehiDir->setText("欢迎进场");
+                else if(rtnKit.dir==databaseManager::eventRtnKit::carOut)
+                {
+                    ui->lbVehiDir->setText("离场\n请缴费: "+QString::number(rtnKit.payPrice,'f',2)+"元\n-================-\n驻场: "+QString::number(rtnKit.stayTime)+"秒\n进场时间: "+rtnKit.carInT.toString()+"\n离场时间: "+rtnKit.carOutT.toString());
+                    QRScanFlag = true;//scan user alipay qrcod.
+                }
+                else if(rtnKit.dir==databaseManager::eventRtnKit::fail)
+                    ui->lbVehiDir->setText("出现问题！请考虑祈祷");
+            }
+            plateVoteFlag=0;
+            ui->lbParkingSpaceLeft->setText(QString::number(dbManager->carParkSpace-dbManager->getParkingCarCount()));
+        }
     }
+
+    //QR code scan 10 frame per run
+    if(QRScanFlag && frameIdxQRCode>10)
+    {
+        frameIdxQRCode=0;
+        cv::Mat cvImgRGB(img.height(),img.width(),CV_8UC3,(void*)img.constBits(),img.bytesPerLine());//convert QImage to opencv::mat
+        cv::Mat cvImgBGR;
+        cv::cvtColor(cvImgRGB, cvImgBGR, cv::COLOR_RGB2BGR);//conver RGB order to BGR
+        QString QRCodeRslt=QString::fromStdString(qrDecoder.detectAndDecode(cvImgBGR));//opencv handle qr code recongnise
+        if(QRCodeRslt!="")
+        {
+            QRScanFlag =false;
+            payServc->raisePay(rtnKit.tradeID,QRCodeRslt,"XYZ停车场 (停车"+QString::number(rtnKit.stayTime)+"秒)",QString::number(rtnKit.payPrice));
+        }
+    }
+}
+
+void MainWindow::showText(QString txt)
+{
+    ui->lbVehiDir->setText(txt);
 }
 
 void MainWindow::on_btDataView_clicked()

@@ -90,15 +90,19 @@ databaseManager::eventRtnKit databaseManager::vehiOutBound(QString plateNo)
         if(query.isValid()==false){qDebug()<<"SQLErr: vehiOutBound browse carPresent failed.";}
         int inTime = query.value("carInTime").toInt();
         int outTime = QDateTime::currentSecsSinceEpoch();
-        rtnKit.payPrice = ceil((float)(outTime-inTime)/unitInSec)*pricePerUnit;//calculate price
+        rtnKit.stayTime = outTime-inTime;
+        rtnKit.payPrice = ceil((float)(rtnKit.stayTime)/unitInSec)*pricePerUnit;//calculate price
         query.bindValue(":curTime",QDateTime::currentSecsSinceEpoch());
         //add a payment
-        int paymentID=10000+ QRandomGenerator::global()->bounded(40000);//random paymentID 10000~50000
+        QString randomString;
+        for(int i=0;i<30;i++)//load random numbers to out_trade_no
+            randomString.append(tradeIdPossiChar[QRandomGenerator::global()->bounded(10)]);
+        QString paymentID = "0000000000"+QString::number(QDateTime::currentSecsSinceEpoch())+randomString;
         query.prepare("INSERT INTO payment VALUES (:paymentID, :payPrice, False)");
         query.bindValue(":paymentID",paymentID);
         query.bindValue(":payPrice",rtnKit.payPrice);
         query.exec();
-        if(query.isValid()==false){qDebug()<<"SQLErr: vehiOutBound append payment failed.";}
+        if(query.isValid()==false){qDebug()<<"SQLErr: vehiOutBound append payment failed."<<query.lastError().databaseText()<<query.lastError().driverText();}
         //add a carLog
         query.prepare("INSERT INTO carLog VALUES (:paymentID, :plateNo, :carinTime, :carOutTime)");
         query.bindValue(":paymentID",paymentID);
@@ -106,12 +110,13 @@ databaseManager::eventRtnKit databaseManager::vehiOutBound(QString plateNo)
         query.bindValue(":carinTime",inTime);
         query.bindValue(":carOutTime",outTime);
         query.exec();
-        if(query.isValid()==false){qDebug()<<"SQLErr: vehiOutBound append pay to carLog failed.";}
+        if(query.isValid()==false){qDebug()<<"SQLErr: vehiOutBound append pay to carLog failed."<<query.lastError().databaseText()<<query.lastError().driverText();}
         //delete from carPresent
         query.prepare("DELETE FROM carPresent WHERE plateNo=:plateNo");
         query.bindValue(":plateNo",plateNo);
         query.exec();
-        if(query.isValid()==false){qDebug()<<"SQLErr: vehiOutBound romove from carPresent failed.";}
+        if(query.isValid()==false){qDebug()<<"SQLErr: vehiOutBound romove from carPresent failed: "<<query.lastError().databaseText()<<query.lastError().driverText();}
+        rtnKit.tradeID=paymentID;
         rtnKit.carInT = QDateTime::fromSecsSinceEpoch(inTime);//unix time to qtime
         rtnKit.carOutT = QDateTime::fromSecsSinceEpoch(outTime);
         rtnKit.dir = eventRtnKit::carOut;
@@ -131,9 +136,23 @@ QSqlQueryModel* databaseManager::execSQLSelect(QString sqlCmd)
     query.exec();
     (*openSQLResult).setQuery(query);//auto execute sql command, now result store inside.
     if(openSQLResult->lastError().isValid()==false)
-        qDebug()<<"SQLErr: execSQLSelect fail executing outsider command:  "<<openSQLResult->lastError().databaseText();
+        qDebug()<<"SQLErr: execSQLSelect fail executing outsider command:  "<<openSQLResult->lastError().databaseText()<<openSQLResult->lastError().driverText();
     return openSQLResult;
 }
 
+void databaseManager::clientPaid(QString paymentId)
+{
+    QSqlQuery query(db);
+    query.prepare("UPDATE FROM payment SET payFlag=TRUE WHERE paymentID=:paymentId");
+    query.bindValue(":paymentId",paymentId);
+    if(query.exec())
+        qDebug()<<"SQLErr: clientPaid set payFlag true failed.";
+}
 
-
+int databaseManager::getParkingCarCount()
+{
+    QSqlQuery query(db);
+    query.prepare("SELECT COUNT(*) FROM carPresent");
+    query.finish();query.exec();query.next();
+    return query.value(0).toInt()==1;
+}
