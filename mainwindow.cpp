@@ -6,10 +6,14 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    this->setWindowTitle("智慧停车管理系统");
 
     dbManager = new databaseManager();
     dataViewer = new bussinessDataViewer(this, dbManager);
     payServc = new paymentService(dbManager);
+    timer=new QTimer(this);
+    timer->setInterval(1000);
+    clearTextDelay=0;
 
     cameralist = QMediaDevices::videoInputs();
     for(int i=0; i<cameralist.size();i++)
@@ -19,7 +23,7 @@ MainWindow::MainWindow(QWidget *parent)
     videoFrameFlow = new QVideoSink(this);
     captureSession->setCamera(camera);           // connect camera and widget
     captureSession->setVideoSink(videoFrameFlow);
-    ui->lbParkingSpaceLeft->setText(QString::number(dbManager->carParkSpace-dbManager->getParkingCarCount()));
+    ui->lbParkingSpaceLeft->setText(QString::number((dbManager->carParkSpace)-(dbManager->getParkingCarCount())));
 
     HLPR_ContextConfiguration config = {0};
     // =======================================================
@@ -56,6 +60,8 @@ MainWindow::MainWindow(QWidget *parent)
     QRScanFlag=false;
     connect(videoFrameFlow, &QVideoSink::videoFrameChanged, this, &MainWindow::processVideoFrame);
     connect(payServc, &paymentService::paymentUpdate, this, &MainWindow::showText);
+    connect(timer,SIGNAL(timeout()),this,SLOT(timeTick()));
+    timer->start();
 }
 
 MainWindow::~MainWindow()
@@ -158,7 +164,7 @@ void  MainWindow::processVideoFrame(const QVideoFrame &frame)
             qDebug()<<"Vote End!! Wins: "<<maxConfPlate.first<<" SumConf: "<<maxConfPlate.second;
             curPlate=maxConfPlate.first;
             if(curPlate=="")//display
-                ui->lbVehiPlateNumd->setText("欢迎莅临\nXYZ停车场");
+                clearTextDelay=10;
             else
             {
                 rtnKit=dbManager->vehiScanned(curPlate);
@@ -174,7 +180,7 @@ void  MainWindow::processVideoFrame(const QVideoFrame &frame)
                     ui->lbVehiDir->setText("出现问题！请考虑祈祷");
             }
             plateVoteFlag=0;
-            ui->lbParkingSpaceLeft->setText(QString::number(dbManager->carParkSpace-dbManager->getParkingCarCount()));
+            ui->lbParkingSpaceLeft->setText(QString::number((dbManager->carParkSpace)-(dbManager->getParkingCarCount())));
         }
     }
 
@@ -194,13 +200,33 @@ void  MainWindow::processVideoFrame(const QVideoFrame &frame)
     }
 }
 
-void MainWindow::showText(QString txt)
+void MainWindow::showText(QString txt, int delay)
 {
     ui->lbVehiDir->setText(txt);
+    clearTextDelay=delay;
+}
+
+void MainWindow::timeTick()
+{
+    ui->lbTime->setText(QTime::currentTime().toString("HH:mm:ss"));
+    if(clearTextDelay==0)
+    {
+        ui->lbVehiPlateNumd->setText("欢迎莅临\nXYZ停车场");
+        ui->lbVehiDir->setText("来XYZ停车场，停车每"+QString::number(dbManager->unitInSec)+"秒仅需"+QString::number(dbManager->pricePerUnit)+"元!");
+    }
+    if(clearTextDelay>=0)//reset text once then get to -1
+        clearTextDelay--;
 }
 
 void MainWindow::on_btDataView_clicked()
 {
     dataViewer->exec();
+}
+
+void MainWindow::on_btSetting_clicked()
+{
+    settingDialog *setting = new settingDialog(payServc, dbManager);
+    setting->setAttribute(Qt::WA_DeleteOnClose);//delete class when close
+    setting->show();
 }
 

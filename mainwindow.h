@@ -9,6 +9,8 @@
 #include <QMediaCaptureSession>
 #include <QtMultimedia/QVideoSink>
 #include <QQueue>
+#include <QTimer>
+#include <QTime>
 #include <opencv2/objdetect.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -16,7 +18,7 @@
 #include "databasemanager.h"
 #include "bussinessdataviewer.h"
 #include "paymentservice.h"
-
+#include "settingdialog.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -31,12 +33,15 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
-    void showText(QString txt);
+    void showText(QString txt, int delay);
 
 private slots:
     void on_btCameraToggle_clicked();
     void processVideoFrame(const QVideoFrame &frame);
     void on_btDataView_clicked();
+    void timeTick();
+
+    void on_btSetting_clicked();
 
 private:
     Ui::MainWindow *ui;
@@ -47,6 +52,8 @@ private:
     databaseManager *dbManager;
     bussinessDataViewer *dataViewer;
     paymentService *payServc;
+    QTimer *timer;
+    int clearTextDelay;
 
     //HyperLPR
     HLPR_ImageData *imageData;

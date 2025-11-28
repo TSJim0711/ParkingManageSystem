@@ -18,7 +18,7 @@
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout">
       <item>
-       <widget class="QLabel" name="label">
+       <widget class="QLabel" name="lbTime">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
           <horstretch>0</horstretch>
@@ -142,7 +142,7 @@ XYZ停车场</string>
            </font>
           </property>
           <property name="text">
-           <string>方向</string>
+           <string>欢迎语句、行车方向、出闸付费详情等资料</string>
           </property>
          </widget>
         </item>

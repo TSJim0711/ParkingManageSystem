@@ -33,17 +33,20 @@ SOURCES += \
     databasemanager.cpp \
     main.cpp \
     mainwindow.cpp \
-    paymentservice.cpp
+    paymentservice.cpp \
+    settingdialog.cpp
 
 HEADERS += \
     bussinessdataviewer.h \
     databasemanager.h \
     mainwindow.h \
-    paymentservice.h
+    paymentservice.h \
+    settingdialog.h
 
 FORMS += \
     bussinessdataviewer.ui \
-    mainwindow.ui
+    mainwindow.ui \
+    settingdialog.ui
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

@@ -16,7 +16,7 @@ public:
     databaseManager();
     ~databaseManager();
 
-    float pricePerUnit = 0.2;//$0.1 every 1 sec. 1hr pay $360, good price
+    float pricePerUnit = 0.2;//$0.2 every 1 sec. 1hr pay $720, good price
     int unitInSec = 1;
     int carParkSpace=50;
     QSqlQueryModel *openSQLResult;
@@ -40,6 +40,7 @@ private:
     bool vehiInBound(QString plateNo);
     eventRtnKit vehiOutBound(QString plateNo);
     QString tradeIdPossiChar="0123456789";
+    bool status;
 };
 
 #endif // DATABASEMANAGER_H

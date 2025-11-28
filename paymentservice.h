@@ -22,8 +22,10 @@ public:
     paymentService(databaseManager *dbArg);
     ~paymentService();
     void raisePay(QString tradeID, QString usrToken, QString payTitle, QString payPrice);
+    QString appID;
+    QString netGate;
 signals:
-    void paymentUpdate(QString detail);
+    void paymentUpdate(QString detail,int delay);
 private slots:
     void postRecieveHandler(QNetworkReply* reply);
 private:

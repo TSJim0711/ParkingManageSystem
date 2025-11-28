@@ -1,16 +1,18 @@
 #include "paymentservice.h"
-#define appid "9021000157673689"
+#define dfAppDd "9021000157673689"
 
 paymentService::paymentService(databaseManager *dbArg)
 {
     manager=new QNetworkAccessManager();
     connect(manager, &QNetworkAccessManager::finished, this, &paymentService::postRecieveHandler);
     db=dbArg;
+    appID=dfAppDd;
+    netGate="https://openapi-sandbox.dl.alipaydev.com/gateway.do";
 }
 
 void paymentService::raisePay(QString tradeID, QString usrToken, QString payTitle, QString payPrice)
 {
-    emit paymentUpdate("正在处理支付\n请稍后");//send text to main screen
+    emit paymentUpdate("正在处理支付\n请稍后",10);//send text to main screen
     //compile with: perl Configure no-shared no-legacy no-ssl no-tls no-dso no-ui-console no-err no-comp no-engine no-module no-dtls no-aria no-bf no-camellia no-cast no-des no-dh no-dsa no-ec no-ecdh no-ecdsa no-gost no-idea no-md4 no-mdc2 no-rc2 no-rc4 no-rc5 no-rmd160 no-seed no-srp no-sm2 no-sm3 no-sm4 no-whirlpool --prefix="C:\OpenSSL-Static" --cflags="/FS"
     QMap<QString, QString> allParams;
     // 公共参数（URL 中携带，参与签名）
@@ -96,7 +98,7 @@ void paymentService::raisePay(QString tradeID, QString usrToken, QString payTitl
     QByteArray postBody = postQuery.query(QUrl::FullyEncoded).toUtf8();
 
     //post primary url
-    QUrl reqUrl("https://openapi-sandbox.dl.alipaydev.com/gateway.do");
+    QUrl reqUrl(netGate);
     QNetworkRequest req(reqUrl);
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded; charset=UTF-8");//state request struct
     req.setRawHeader("Accept", "application/json; charset=UTF-8");//ask for json return
@@ -116,6 +118,7 @@ void paymentService::postRecieveHandler(QNetworkReply* reply)
 
     // store return to json
     QByteArray responseData = reply->readAll();
+    qDebug()<<"Respond:"<<responseData;
 
     // decode json
     QString responseStr = QString::fromUtf8(responseData);
@@ -126,12 +129,12 @@ void paymentService::postRecieveHandler(QNetworkReply* reply)
         QString code = coreObj["code"].toString();
         if (code == "10000")//success
         {
-            db->clientPaid(coreObj["trade_no"].toString());//set paid in database
-            emit paymentUpdate("已缴费\n期待您再次来临~");//send text to main screen
+            db->clientPaid(coreObj["out_trade_no"].toString());//set paid in database
+            emit paymentUpdate("已缴费\n期待您再次来临~",5);//send text to main screen
         }else
         {
             qDebug() << "Err: Receive respond from alipay: " << coreObj["msg"].toString()<< "，ERRCode：" << code;
-            emit paymentUpdate("支付错误！\n"+coreObj["sub_msg"].toString());
+            emit paymentUpdate("支付错误！\n"+coreObj["sub_msg"].toString(),5);
         }
     }
     reply->deleteLater();//release reply when ended
